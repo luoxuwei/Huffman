@@ -41,6 +41,7 @@ public class Huffman {
         fsin = new FileInputStream(fin);
         allocateTree();
         addLeaves();
+        writeHeader(fsout);
 
         fsin.close();
         fsout.close();
@@ -101,4 +102,76 @@ public class Huffman {
 
         return i;
     }
+
+
+    //|original_size|num_active|{c|weight}|{c|weight}|....
+    int writeHeader(OutputStream out) throws IOException {
+        int size = 4 + 1 + num_active * (1 + 4);
+        int weight = 0;
+        byte[] buffer = new byte[size];
+
+        int pos = 0;
+        int j = 4;
+        //高位存低地址，original_size >> (3*2*2*2 == 24),(2*2*2*2 == 16),8,0
+        while (j > 0) {
+            j--;
+            buffer[pos++] = (byte) ((original_size >> (j<<3)) & 0xff);
+        }
+
+        buffer[pos++] = (byte) num_active;
+
+        for (int i = 1; i <= num_active; i++) {
+            weight = nodes[i].weight;
+            buffer[pos++] = (byte) (-nodes[i].index - 1);
+            j = 4;
+            while (j > 0) {
+                j--;
+                buffer[pos++] = (byte) ((weight >> (j<<3)) & 0xff);
+            }
+        }
+        out.write(buffer);
+        return 0;
+    }
+
+    int readHeader(InputStream in) throws IOException {
+        byte[] buff = new byte[4];
+        int bytes_read = in.read(buff);
+        if (bytes_read < 1) {
+            return -1;
+        }
+
+        int pos = 0;
+        original_size = buff[pos++];
+        while (pos < 4) {
+            original_size = (original_size << 8) | buff[pos++];
+        }
+
+        bytes_read = in.read();
+        if (bytes_read < 1) {
+            return -1;
+        }
+        num_active = bytes_read;
+
+        allocateTree();
+
+        int size = num_active * (1 + 4);
+        buff = new byte[size];
+
+        in.read(buff);
+        pos = 0;
+        int weight = 0;
+        for (int i = 1; i <= num_active; i++) {
+            nodes[i] = new Node();
+            nodes[i].index = -(buff[pos++] + 1);
+            weight = buff[pos++];
+            int j = 0;
+            while (++j < 4) {
+                weight = (weight << 8) | buff[pos++];
+            }
+            nodes[i].weight = weight;
+        }
+        num_nodes = num_active;
+        return 0;
+    }
+
 }
