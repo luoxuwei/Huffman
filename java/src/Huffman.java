@@ -21,6 +21,12 @@ public class Huffman {
         int weight;
     }
 
+    //下标从1开始，因为保证了从左到右依次为频率逐渐增加，所以当构造huffman树时，从最左边开始，取两个节点构造新节点时，
+    // 可以保证左节点的下标是奇数右节点是相邻的偶数的规律，这样在编码时可以通过下标值模2来判断是左还是右
+    // 在构造huffman树时是以右节点下标除以2的方式计算父节点的下标，这样，(1,2)-->1,(3,4)-->2, 这与我们熟悉的构造最小堆的算法不一样，
+    // 但其实因为有单独的数组parent_index来存父节点的nodes索引,实际上只要保持一致有规律统即可，就可以通过固定的算法来计算，
+    // 由于构造huffman树时是可以保证是用的右节点index，所以直接除2，在编码时左右节点都要算，要有统一适用于左右节点的算法，可以用（index + 1)/2, 这样的方式,
+    // 一样可以保证 (1,2)-->1, (3,4)-->2 这样构造和编码两个阶段的效果是一样的。
     Node[] nodes;
     //index数组中存放的是nodes数组的下标, Node里的index字段存放的是index数组的下标, 相互索引
     int[] leaf_index = new int[num_alphabets];//存放叶子节点的nodes索引
@@ -29,9 +35,19 @@ public class Huffman {
 
     int bits_in_buffer = 0;//编码时写的时候用于定位，解码时用于保存buffer中的总位数
     byte[] buffer = new byte[MAX_BUFFER_SIZE];
+    int current_bit = 0;//解码时读的时候用
+    boolean eof_input = false;//读的时候用
 
-    public void decode(String in, String out) {
-
+    public void decode(String in, String out) throws IOException {
+        File fin = new File(in);
+        FileInputStream fsin = new FileInputStream(fin);
+        File fout = new File(out);
+        FileOutputStream fsout = new FileOutputStream(fout);
+        readHeader(fsin);
+        buildTree();
+        decodeBitStream(fsin, fsout);
+        fsin.close();
+        fsout.close();
     }
 
     public void encode(String in, String out) throws IOException {
@@ -111,6 +127,51 @@ public class Huffman {
             parent_index[index] = i;
 
         return i;
+    }
+
+    //构造Huffman树时，左节点的index是奇数，右节点index是偶数，所以index%2算出来是左1右0, readBit是1表示是左边0表示右边，所以用index*2-bit来算子节点index.
+    void decodeBitStream(InputStream fin, OutputStream fo) throws IOException {
+        int node_index = nodes[num_nodes].index;//根节点
+        int bit = 0;
+        int i = 0;
+        while (true) {
+            bit = readBit(fin);
+            if (bit == END_OF_FILE) {
+                break;
+            }
+            node_index = nodes[node_index*2-bit].index;
+            //小于0表示到了叶子节点
+            if (node_index < 0) {
+                char c = (char) (-node_index - 1);
+                fo.write(c);
+                //如果全部解码完了就退出
+                if (++i == original_size)
+                    break;
+                //解码完一个字符，重新从根节点出发
+                node_index = nodes[num_nodes].index;
+            }
+        }
+    }
+
+    int readBit(InputStream in) throws IOException {
+        //一个buffer读完，重新从文件中读取一个buffer
+        if (current_bit == bits_in_buffer) {
+            if (eof_input)
+                return END_OF_FILE;
+            else {
+                int size = in.read(buffer);
+                if (size < MAX_BUFFER_SIZE) {
+                    eof_input = true;
+                }
+                bits_in_buffer = size << 3;//一个byte有8位，总位数是size*8
+                current_bit = 0;
+            }
+        }
+
+        if (bits_in_buffer == 0) return END_OF_FILE;
+        int bit = (buffer[current_bit>>3] >> (7 - current_bit%8)) & 0x1;
+        current_bit++;
+        return bit;
     }
 
     //nodes是从1开始存放的，所以实际上最右边的节点下标是num_nodes, buildTree只跟parent_index有关，遍历的时候也是一样，leaf_index只是记录了一下所有叶子节点，用于编码时回溯路径
