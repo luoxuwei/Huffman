@@ -42,6 +42,7 @@ public class Huffman {
         allocateTree();
         addLeaves();
         writeHeader(fsout);
+        buildTree();
 
         fsin.close();
         fsout.close();
@@ -101,6 +102,17 @@ public class Huffman {
             parent_index[index] = i;
 
         return i;
+    }
+
+    //nodes是从1开始存放的，所以实际上最右边的节点下标是num_nodes, buildTree只跟parent_index有关，遍历的时候也是一样，leaf_index只是记录了一下所有叶子节点，用于编码时回溯路径
+    void buildTree() {
+        int a = 0, b = 0, freeindex = 1, index = 0;
+        while (freeindex < num_nodes) {
+            a = freeindex++;
+            b = freeindex++;
+            index = add_node(b/2, nodes[a].weight + nodes[b].weight);
+            parent_index[b/2] = index;
+        }
     }
 
 
