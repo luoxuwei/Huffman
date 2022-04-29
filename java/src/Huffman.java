@@ -4,6 +4,7 @@
 
 
 import java.io.*;
+import java.util.Arrays;
 
 public class Huffman {
     public final int END_OF_FILE =  -1;
@@ -26,6 +27,9 @@ public class Huffman {
     int[] parent_index;//存放合并而成的空节点的nodes索引
     int num_nodes;//节点个数
 
+    int bits_in_buffer = 0;//编码时写的时候用于定位，解码时用于保存buffer中的总位数
+    byte[] buffer = new byte[MAX_BUFFER_SIZE];
+
     public void decode(String in, String out) {
 
     }
@@ -43,6 +47,11 @@ public class Huffman {
         addLeaves();
         writeHeader(fsout);
         buildTree();
+        int c;
+        while ((c = fsin.read()) != -1) {
+            encodeAlphabet(fsout, c);
+        }
+        flushBuffer(fsout);
 
         fsin.close();
         fsout.close();
@@ -113,6 +122,46 @@ public class Huffman {
             index = add_node(b/2, nodes[a].weight + nodes[b].weight);
             parent_index[b/2] = index;
         }
+    }
+
+    // 由于 buildTree() 构造huffman树时是可以保证是用的右节点index，所以直接除2，在编码时左右节点都要算，要有统一适用于左右节点的算法，可以用（index + 1)/2, 这样的方式,
+    // 一样可以保证 (1,2)-->1, (3,4)-->2 这样构造和编码两个阶段的效果是一样的。构造Huffman树时，左节点的index是奇数，右节点index是偶数，所以这里算出来是左1右0,对应在decodeBitStream中，readBit是1表示是左边，正好index*2-bit是奇数.
+    void encodeAlphabet(OutputStream out, int c) throws IOException {
+        int nodes_index = leaf_index[c + 1];
+        int stack_top = 0;
+        int[] stack = new int[num_active];
+        while (nodes_index < num_nodes) {
+            stack[stack_top++] = nodes_index%2;
+            nodes_index = parent_index[(nodes_index + 1)/2];
+        }
+        while (--stack_top >= 0) {
+            writeBit(out, stack[stack_top]);
+        }
+    }
+
+    //类似位图的实现方式，底层用byte数组，在buff中定位到某一位bit的方式是，bit/8算出byte数组的 index，bit%8算byte中的某一位
+    int writeBit(OutputStream out, int bit) throws IOException {
+        //buffer写满了
+        if (bits_in_buffer == MAX_BUFFER_SIZE<<3) {
+            out.write(buffer);
+            Arrays.fill(buffer, (byte) 0);
+            bits_in_buffer = 0;
+        }
+
+        if (bit == 1) {
+            buffer[bits_in_buffer >> 3] |= (0x1 << (7 - bits_in_buffer%8));//从左至右的顺序，需要从低位开始算，比如求出是第3位应该是 00010000 而不是00001000
+        }
+        bits_in_buffer++;
+        return 0;
+    }
+
+    int flushBuffer(OutputStream out) throws IOException {
+        if (bits_in_buffer > 0) {
+            out.write(buffer, 0,
+                    (bits_in_buffer + 7) >> 3);
+            bits_in_buffer = 0;
+        }
+        return 0;
     }
 
 
